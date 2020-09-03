@@ -23,13 +23,13 @@ object TimeAndWindowTest {
     env.setParallelism(1)
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 
-    //1. 创建表执行环境
+    // 1. 创建表执行环境
     val tableEnv = StreamTableEnvironment.create(env)
 
-    //2. 从文件读取，转换成流
+    // 2. 从文件读取，转换成流
     val inputStream = env.readTextFile("D:\\Learning\\Workspace\\FlinkLearning\\src\\main\\resources\\sensor.txt")
 
-    //3. map成样例类
+    // 3. map成样例类
     val dataStream = inputStream
       .map(data => {
         val dataArray = data.split(",")
@@ -39,28 +39,28 @@ object TimeAndWindowTest {
         override def extractTimestamp(t: SensorReading): Long = t.timestamp * 1000L
       })
 
-    //4. 将流转化为表，直接定义时间字段(处理时间processTime)
-    //val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp, 'pt.proctime())
+    // 4. 将流转化为表，直接定义时间字段(处理时间processTime)
+    // val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp, 'pt.proctime())
 
-    //4. 将流转化为表，直接定义时间字段(事件时间eventTime)
+    // 4. 将流转化为表，直接定义时间字段(事件时间eventTime)
     val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp.rowtime() as 'ts)
 
 
-    //4.1 Group Window操作
+    // 4.1 Group Window操作
     val resultTable: Table = sensorTable
       .window(Tumble over 10.seconds() on 'ts as 'tw)
       .groupBy('id, 'tw)
       .select('id, 'id.count(), 'tw.end)
 
-    //打印输出
+    // 打印输出
     //resultTable.toRetractStream[Row].print("agg")
 
-    //4.1 Over Window操作
+    // 4.1 Over Window操作
     val overResultTable: Table = sensorTable
       .window(Over partitionBy 'id orderBy 'ts preceding 2.rows as 'ow)
       .select('id, 'ts, 'id.count over 'ow, 'temperature.avg over 'ow)
 
-    //打印输出
+    // 打印输出
     overResultTable.toRetractStream[Row].print("over")
 
     env.execute()
