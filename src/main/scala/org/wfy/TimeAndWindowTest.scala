@@ -64,11 +64,11 @@ object TimeAndWindowTest {
 
     // 5.2 SQL实现
     // Group Windows
-//    tableEnv.createTemporaryView("sensor", sensorTable)
-//    val resultSqlTable: Table = tableEnv.sqlQuery(
-//      """
-//        |select id, count(id), avg(temperature)
-//        |""".stripMargin)
+    tableEnv.createTemporaryView("sensor", sensorTable)
+    val resultSqlTable: Table = tableEnv.sqlQuery(
+      """
+        |select id, count(id), avg(temperature)
+        |""".stripMargin)
 
 
     // 打印输出
