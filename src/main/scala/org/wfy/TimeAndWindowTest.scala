@@ -46,7 +46,8 @@ object TimeAndWindowTest {
     val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp.rowtime() as 'ts)
 
 
-    // 4.1 Group Window操作
+    // 5.1 Table API实现
+    // 5.1.1 Group Window操作
     val resultTable: Table = sensorTable
       .window(Tumble over 10.seconds() on 'ts as 'tw)
       .groupBy('id, 'tw)
@@ -55,10 +56,20 @@ object TimeAndWindowTest {
     // 打印输出
     //resultTable.toRetractStream[Row].print("agg")
 
-    // 4.1 Over Window操作
+    // 5.1.2 Over Window操作
     val overResultTable: Table = sensorTable
       .window(Over partitionBy 'id orderBy 'ts preceding 2.rows as 'ow)
       .select('id, 'ts, 'id.count over 'ow, 'temperature.avg over 'ow)
+
+
+    // 5.2 SQL实现
+    // Group Windows
+    tableEnv.createTemporaryView("sensor", sensorTable)
+    val resultSqlTable: Table = tableEnv.sqlQuery(
+      """
+        |select id, count(id), avg(temperature)
+        |""".stripMargin)
+
 
     // 打印输出
     overResultTable.toRetractStream[Row].print("over")
