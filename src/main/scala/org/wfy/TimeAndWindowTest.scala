@@ -24,7 +24,7 @@ object TimeAndWindowTest {
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime)
 
     // 1. 创建表执行环境
-    val tableEnv = StreamTableEnvironment.create(env)
+    val tableEnv: StreamTableEnvironment = StreamTableEnvironment.create(env)
 
     // 2. 从文件读取，转换成流
     val inputStream = env.readTextFile("D:\\Learning\\Workspace\\FlinkLearning\\src\\main\\resources\\sensor.txt")
@@ -64,11 +64,11 @@ object TimeAndWindowTest {
 
     // 5.2 SQL实现
     // Group Windows
-    tableEnv.createTemporaryView("sensor", sensorTable)
-    val resultSqlTable: Table = tableEnv.sqlQuery(
-      """
-        |select id, count(id), avg(temperature)
-        |""".stripMargin)
+//    tableEnv.createTemporaryView("sensor", sensorTable)
+//    val resultSqlTable: Table = tableEnv.sqlQuery(
+//      """
+//        |select id, count(id), avg(temperature)
+//        |""".stripMargin)
 
 
     // 打印输出
