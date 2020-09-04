@@ -67,12 +67,27 @@ object TimeAndWindowTest {
     tableEnv.createTemporaryView("sensor", sensorTable)
     val resultSqlTable: Table = tableEnv.sqlQuery(
       """
-        |select id, count(id), avg(temperature)
-        |""".stripMargin)
+        |select id, count(id), hop_end(ts, interval '4' second, interval '10' second)
+        |from sensor
+        |group by id, hop(ts, interval '4' second, interval '10' second)
+        |""".stripMargin
+    ) //hop_end, hop定义的是滑动窗口
 
+    // Over Windows
+    val orderSqlTable: Table = tableEnv.sqlQuery(
+      """
+        |select id, ts, count(id) over w, avg(temperature) over w
+        |from sensor
+        |window w as (
+        |  partition by id
+        |  order by ts
+        |  rows between 2 preceding and current row
+        |)
+        |""".stripMargin
+    )
 
     // 打印输出
-    overResultTable.toRetractStream[Row].print("over")
+    orderSqlTable.toRetractStream[Row].print("agg sql")
 
     env.execute()
   }
