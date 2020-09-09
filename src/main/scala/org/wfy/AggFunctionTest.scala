@@ -1,21 +1,22 @@
 package org.wfy
 
+import org.apache.flink.api.scala.createTypeInformation
 import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor
-import org.apache.flink.streaming.api.scala._
+import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.table.api._
 import org.apache.flink.table.api.bridge.scala._
-import org.apache.flink.table.functions.TableFunction
+import org.apache.flink.table.functions._
 import org.apache.flink.types.Row
 
 /*
 * @Author wfy
-* @Date 2020/9/6 22:20
+* @Date 2020/9/9 11:14
 * org.wfy
 */
 
-object TableFunctionTest {
+object AggFunctionTest {
   def main(args: Array[String]): Unit = {
     // 创建流处理执行环境
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -41,35 +42,50 @@ object TableFunctionTest {
     // 4. 将流转化为表，直接定义时间字段(事件时间eventTime)
     val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp.rowtime() as 'ts)
 
-    // 5 先定义一个对象(Table Function)
-    val split = new Split("_")
+    //5 创建一个聚合函数实例
+    val avgTemp = new AvgTemp()
 
-    //5.1 Table API 调用
+    //5.1 Table API调用
     val resultTable: Table = sensorTable
-      .joinLateral(split('id) as('word, 'length)) //侧向连接，应用TableFunction
-      .select('id, 'ts, 'word, 'length)
+      .groupBy('id)
+      .aggregate(avgTemp('temperature) as 'avgTemp)
+      .select('id, 'avgTemp)
 
-    // 5.2 SQL调用
+    //5.2 SQL调用
     tableEnv.createTemporaryView("sensor", sensorTable)
-    tableEnv.registerFunction("split", split)
-    val resultSqlTable = tableEnv.sqlQuery(
+    tableEnv.registerFunction("avgTemp", avgTemp)
+
+    val resultSqlTable: Table = tableEnv.sqlQuery(
       """
-        |select id, ts, word, length
-        |from sensor, lateral table(split(id)) as splitid(word, length))
-        |""".stripMargin)
+        |select
+        |id, avgTemp(temperature)
+        |from sensor
+        |group by id
+        |""".stripMargin
+    )
 
-    resultTable.toAppendStream[Row].print("result")
-    resultSqlTable.toAppendStream[Row].print("sql result")
+    // 转换成流打印输出
+    resultTable.toRetractStream[(String, Double)].print("agg temp")
+    resultSqlTable.toRetractStream[Row].print("agg temp sql")
 
-    env.execute("table job function test")
+    env.execute("aggFuc job test")
   }
 
-  //自定义TableFunction，实现分割字符串并统计长度
-  class Split(separator: String) extends TableFunction[(String, Int)] {
-    def eval(str: String): Unit = {
-      str.split(separator).foreach(
-        word => collect((word, word.length))
-      )
+  //定义AggregateFunction的累加器
+  class AvgTempAcc {
+    var sum: Double = 0.0
+    var count: Int = 0
+  }
+
+  //定义计算平均值函数
+  class AvgTemp extends AggregateFunction[Double, AvgTempAcc] {
+    override def getValue(acc: AvgTempAcc): Double = acc.sum / acc.count
+
+    override def createAccumulator(): AvgTempAcc = new AvgTempAcc
+
+    def accumulate(acc: AvgTempAcc, temp: Double): Unit = {
+      acc.sum += temp
+      acc.count += 1
     }
   }
 

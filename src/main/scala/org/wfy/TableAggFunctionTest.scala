@@ -6,16 +6,16 @@ import org.apache.flink.streaming.api.scala._
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.table.api._
 import org.apache.flink.table.api.bridge.scala._
-import org.apache.flink.table.functions.TableFunction
-import org.apache.flink.types.Row
+import org.apache.flink.table.functions.TableAggregateFunction
+import org.apache.flink.util.Collector
 
 /*
 * @Author wfy
-* @Date 2020/9/6 22:20
+* @Date 2020/9/9 17:47
 * org.wfy
 */
 
-object TableFunctionTest {
+object TableAggFunctionTest {
   def main(args: Array[String]): Unit = {
     // 创建流处理执行环境
     val env = StreamExecutionEnvironment.getExecutionEnvironment
@@ -41,35 +41,55 @@ object TableFunctionTest {
     // 4. 将流转化为表，直接定义时间字段(事件时间eventTime)
     val sensorTable: Table = tableEnv.fromDataStream(dataStream, 'id, 'temperature, 'timestamp.rowtime() as 'ts)
 
-    // 5 先定义一个对象(Table Function)
-    val split = new Split("_")
+    //创建一个表聚合函数实例
+    val top2Temp = new Top2Temp()
 
-    //5.1 Table API 调用
+    //Table API
     val resultTable: Table = sensorTable
-      .joinLateral(split('id) as('word, 'length)) //侧向连接，应用TableFunction
-      .select('id, 'ts, 'word, 'length)
+      .groupBy('id)
+      .flatAggregate(top2Temp('temperature) as('temp, 'rank))
+      .select('id, 'temp, 'rank)
 
-    // 5.2 SQL调用
     tableEnv.createTemporaryView("sensor", sensorTable)
-    tableEnv.registerFunction("split", split)
-    val resultSqlTable = tableEnv.sqlQuery(
+    tableEnv.registerFunction("top2Temp", top2Temp)
+
+    //SQL调用
+    val resultSqlResult: Table = tableEnv.sqlQuery(
       """
-        |select id, ts, word, length
-        |from sensor, lateral table(split(id)) as splitid(word, length))
+        |select id, temperature
+        |from sensor
         |""".stripMargin)
 
-    resultTable.toAppendStream[Row].print("result")
-    resultSqlTable.toAppendStream[Row].print("sql result")
+    // 转换成流打印输出
+    resultTable.toRetractStream[(String, Double, Int)].print("agg temp")
 
-    env.execute("table job function test")
+    env.execute()
   }
 
-  //自定义TableFunction，实现分割字符串并统计长度
-  class Split(separator: String) extends TableFunction[(String, Int)] {
-    def eval(str: String): Unit = {
-      str.split(separator).foreach(
-        word => collect((word, word.length))
-      )
+  //定义一个累加器
+  class Top2TempAcc {
+    var highestTemp: Double = Int.MinValue
+    var secondHighestTemp: Double = Int.MinValue
+  }
+
+  //定义一个TableAggregateFunction
+  class Top2Temp extends TableAggregateFunction[(Double, Int), Top2TempAcc] {
+    override def createAccumulator(): Top2TempAcc = new Top2TempAcc
+
+    //定义更新累加器方法
+    def accumulate(acc: Top2TempAcc, temp: Double): Unit = {
+      if (temp > acc.highestTemp) {
+        acc.secondHighestTemp = acc.highestTemp
+        acc.highestTemp = temp
+      } else if (temp > acc.secondHighestTemp) {
+        acc.secondHighestTemp = temp
+      }
+    }
+
+    //定义输出结果方法
+    def emitValue(acc: Top2TempAcc, out: Collector[(Double, Int)]): Unit = {
+      out.collect(acc.highestTemp, 1)
+      out.collect(acc.secondHighestTemp, 2)
     }
   }
 
