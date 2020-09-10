@@ -16,7 +16,7 @@ import org.apache.flink.types.Row
 * org.wfy
 */
 
-object ScalaFunctionTest {
+object ScalarFunctionTest {
   def main(args: Array[String]): Unit = {
     // 创建流处理执行环境
     val env = StreamExecutionEnvironment.getExecutionEnvironment
